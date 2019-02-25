@@ -1,0 +1,279 @@
+include HT66F50.inc
+
+ds	.section	'data'
+STACK_A		DB		?
+STACK_PSW	DB		?
+KEY			DB		?
+COUNT		DB		?
+CODE1		DB		?
+CODE2		DB		?
+DEL1		DB		?
+DEL2		DB		?
+DEL3		DB		?
+PORT		EQU		PA
+PORTC		EQU		PAC
+KEY_PORT	EQU		PC
+KEY_PORTC	EQU		PCC
+KEY_PORTPU	EQU		PCPU
+BJT			DB		3	DUP(?)
+DIGIT		DB		3	DUP(?)
+cs	.section	at  000h	'code'
+			ORG		00H
+			JMP		MAIN
+			ORG		04H
+			JMP		ISR_EXTINTO
+			ORG		14H
+			JMP		ISR_STM
+;===================================
+MAIN:
+			CALL	SETUP
+			CALL	RUN
+			JMP		$
+;===================================
+SETUP		PROC
+			CLR		ACERL
+			MOV		A,08H
+			MOV		CP0C,A
+			MOV		CP1C,A
+			CLR		PORTC
+			CLR		PBC
+			MOV		A,00000000B
+			MOV		TM2C0,A
+			MOV		A,11000001B
+			MOV		TM2C1,A
+			MOV		A,HIGH	5000
+			MOV		TM2AH,A
+			MOV		A,LOW	5000
+			MOV		TM2AL,A
+			SET		MF0E
+			SET		T2AE
+			SET		PAPU.3
+			SET		PAC.3
+			MOV		A,00000010B
+			MOV		INTEG,A
+			MOV		A,4	;設定密碼:41
+			MOV		CODE2,A
+			MOV		A,1
+			MOV		CODE1,A
+			CLR		PB5
+			CLR		BJT[1]
+			SET		INT0E
+			SET		T2ON
+			SET		EMI
+			RET
+SETUP		ENDP
+;===================================
+RUN			PROC
+			MOV		A,11
+			MOV		DIGIT[1],A
+			MOV		DIGIT[2],A
+WAIT_1ST_PRESS:	CALL	READ_KEY	;第1個,數字
+			MOV		A,16
+			XOR		A,KEY
+			SZ		Z
+			JMP		RUN
+			CALL	DELAY1
+			MOV		A,10
+			XOR		A,KEY
+			SZ		Z
+			JMP		RUN
+			MOV		A,11
+			XOR		A,KEY
+			SZ		Z
+			JMP		RUN
+			MOV		A,12	;按運算鍵無用所以要跳回去重輸入
+			XOR		A,KEY
+			SZ		Z
+			JMP		RUN
+			MOV		A,13
+			XOR		A,KEY
+			SZ		Z
+			JMP		RUN
+			MOV		A,14
+			XOR		A,KEY
+			SZ		Z
+			JMP		RUN
+			MOV		A,15
+			XOR		A,KEY
+			SZ		Z
+			JMP		RUN
+			MOV		A,KEY
+			MOV		DIGIT[1],A
+			CALL	DELAY1
+WAIT_2ND_PRESS:	CALL	READ_KEY	;第1個,數字
+			MOV		A,16
+			XOR		A,KEY
+			SZ		Z
+			JMP		WAIT_2ND_PRESS
+			CALL	DELAY1
+			MOV		A,10
+			XOR		A,KEY
+			SZ		Z
+			JMP		WAIT_2ND_PRESS
+			MOV		A,11
+			XOR		A,KEY
+			SZ		Z
+			JMP		WAIT_2ND_PRESS
+			MOV		A,12	;按運算鍵無用所以要跳回去重輸入
+			XOR		A,KEY
+			SZ		Z
+			JMP		WAIT_2ND_PRESS
+			MOV		A,13
+			XOR		A,KEY
+			SZ		Z
+			JMP		WAIT_2ND_PRESS
+			MOV		A,14
+			XOR		A,KEY
+			SZ		Z
+			JMP		WAIT_2ND_PRESS
+			MOV		A,15
+			XOR		A,KEY
+			SZ		Z
+			JMP		RUN
+			MOV		A,DIGIT[1]
+			MOV		DIGIT[2],A
+			MOV		A,KEY
+			MOV		DIGIT[1],A
+			MOV		A,11
+			XOR		A,DIGIT[1]
+			SNZ		Z
+			JMP		$-3
+			JMP		RUN
+			RET
+RUN			ENDP
+;===================================
+READ_KEY	PROC
+			MOV		A,11110000B
+			MOV		KEY_PORTC,A
+			MOV		KEY_PORTPU,A
+			SET		KEY_PORT
+			CLR		KEY
+			MOV		A,04
+			MOV		COUNT,A
+			CLR		C
+SCAN_KEY:	RLC		KEY_PORT
+			SET		C
+			SNZ		KEY_PORT.4
+			JMP		END_KEY
+			INC		KEY
+			SNZ		KEY_PORT.5
+			JMP		END_KEY
+			INC		KEY
+			SNZ		KEY_PORT.6
+			JMP		END_KEY
+			INC		KEY
+			SNZ		KEY_PORT.7
+			JMP		END_KEY
+			INC		KEY
+			SDZ		COUNT
+			JMP		SCAN_KEY
+END_KEY:	RET
+READ_KEY	ENDP
+;===================================
+ISR_EXTINTO:MOV		STACK_A,A
+			MOV		A,STATUS
+			MOV		STACK_PSW,A
+			MOV		A,CODE1
+			XOR		A,DIGIT[1]
+			SNZ		Z
+			JMP		$+11
+			MOV		A,CODE2
+			XOR		A,DIGIT[2]
+			SNZ		Z
+			JMP		$+7
+			SET		PB5
+			CLR		PB1
+			CLR		PB2
+			CALL	DELAY2
+			CLR		PB5
+			JMP		$+9
+			SET		PB1
+			SET		PB2
+			MOV		A,10
+			MOV		DIGIT[1],A
+			MOV		DIGIT[2],A
+			CALL	NUMBER
+			MOV		PORT,A
+			CALL	DELAY2
+			MOV		A,11
+			MOV		DIGIT[1],A
+			MOV		DIGIT[2],A
+			MOV		A,STACK_PSW
+			MOV		STATUS,A
+			MOV		A,STACK_A
+			CLR		INT0F
+			RETI
+;===================================
+ISR_STM:	MOV		STACK_A,A
+			MOV		A,STATUS
+			MOV		STACK_PSW,A
+			MOV		A,BJT[1]
+			ADDM	A,PCL
+			JMP		$+2
+			JMP		$+8
+			SET		PB1;個位數
+			CLR		PB2
+			MOV		A,DIGIT[1]
+			CALL	NUMBER
+			MOV		PORT,A
+			INC		BJT[1]
+			JMP		$+7
+			SET		PB2;十位數
+			CLR		PB1
+			MOV		A,DIGIT[2]
+			CALL	NUMBER
+			MOV		PORT,A
+			CLR		BJT[1]
+			CLR		T2AF
+			MOV		A,STACK_PSW
+			MOV		STATUS,A
+			MOV		A,STACK_A
+			RETI
+;===================================
+NUMBER		PROC
+			ADDM	A,PCL
+			RET		A,10110111B	;0
+			RET		A,00000110B	;1
+			RET		A,11010011B	;2
+			RET		A,11000111B	;3
+			RET		A,01100110B	;4
+			RET		A,11100101B	;5
+			RET		A,11110101B	;6
+			RET		A,00000111B	;7
+			RET		A,11110111B	;8
+			RET		A,01100111B	;9
+			RET		A,01110001B	;F
+			RET		A,10000000B	;-
+NUMBER		ENDP
+;===================================
+DELAY1		PROC
+			MOV		A,68
+			MOV		DEL1,A
+DEL_1:		MOV		A,20
+			MOV		DEL2,A
+DEL_2:		MOV		A,75
+			MOV		DEL3,A
+DEL_3:		SDZ		DEL3
+			JMP		DEL_3
+			SDZ		DEL2
+			JMP		DEL_2
+			SDZ		DEL1
+			JMP		DEL_1
+			RET
+DELAY1		ENDP
+;===================================
+DELAY2		PROC
+			MOV		A,73
+			MOV		DEL1,A
+DEL_4:		MOV		A,200
+			MOV		DEL2,A
+DEL_5:		MOV		A,110
+			MOV		DEL3,A
+DEL_6:		SDZ		DEL3
+			JMP		DEL_6
+			SDZ		DEL2
+			JMP		DEL_5
+			SDZ		DEL1
+			JMP		DEL_4
+			RET
+DELAY2		ENDP
